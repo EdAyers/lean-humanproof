@@ -1,0 +1,34 @@
+-- The *moves* as explained in the G&G paper.
+--
+-- --Deletion
+-- deleteDone,
+-- deleteDoneDisjunct,
+-- deleteDangling,
+-- deleteUnmatchable,
+-- --Tidying
+-- peelAndSplitUniversalConditionalTarget,
+-- splitDisjunctiveHypothesis,
+-- splitConjunctiveTarget,
+-- splitDisjunctiveTarget,
+-- peelBareUniversalTarget,
+-- removeTarget,
+-- collapseSubboxTarget,
+-- --Applying
+-- forwardsReasoning,
+-- forwardsLibraryReasoning,
+-- expandPreExistentialHypothesis,
+-- elementaryExpansionOfHypothesis,
+-- backwardsReasoning,
+-- backwardsLibraryReasoning,
+-- elementaryExpansionOfTarget,
+-- expandPreUniversalTarget,
+-- solveBullets,
+-- automaticRewrite,
+-- --Suspension
+-- unlockExistentialUniversalConditionalTarget,
+-- unlockExistentialTarget,
+-- expandPreExistentialTarget,
+-- convertDiamondToBullet,
+-- --EqualitySubstitution
+-- rewriteVariableVariableEquality,
+-- rewriteVariableTermEquality
