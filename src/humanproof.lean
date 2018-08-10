@@ -38,6 +38,7 @@
 -- rewriteVariableTermEquality                        -- no direct equivalent in Lean. See Remark (3). -- In the original GG implementation they just had a library of carefully chosen rewrite rules, so I don't think these will scale anyway (E)
 
 /-
+
 Remark (1). We will have to think about types. In the G&G setting there is no such thing as a type.
 I guess humans have a pretty intuitive way of thinking about inductive types. And maybe the `split`
 tactic is exactly what we need.
@@ -54,5 +55,8 @@ for a chain of rewrites that will discharge goals of the form A = B.
       learning to find the chain of rewrites.
 There is a tactic `rewrite` but it doesn't do any reasoning or automation. It has to be told explicitly
 what the use for the rewrite. 
+
+Remark (4). For the suspension moves we might be able to use Lean's metavariables. On the other hand,
+I have bad experiences with using metavariables before specifying their value.
 
 -/
