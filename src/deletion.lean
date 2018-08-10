@@ -15,7 +15,7 @@ def list.some {α : Type u} (p : α -> bool) : list α -> bool
 
 namespace exprset
 meta def exprset := rbmap expr unit expr.lt_prop
-meta def from_list (l : list expr) : exprset := rbmap.from_list $ list.map (λ x, ⟨x,unit.star⟩) l
+meta def from_list (l : list expr) : exprset := rbmap.from_list $ list.map (λ x, ⟨x,()⟩) l
 meta def to_list (d : exprset) : list expr := list.map prod.fst $ rbmap.to_list d
 meta def empty : exprset := mk_rbmap expr unit expr.lt_prop
 meta def union : exprset -> exprset -> exprset := rbmap.fold(λ x u a, rbmap.insert a x u)
@@ -61,10 +61,24 @@ do
     target_deps <- return $ list.foldl union empty $ list.map (λ t : formula, t.deps) targets,
     list.mmap' (λ (h : formula), clear h.term) $ find_dangling target_deps [] hyps
 
+meta def scratch_tac : tactic unit :=
+do
+    v <- mk_meta_var `(ℕ),
+    e <- mk_app ``eq [v, v],
+    h <- tactic.assert `h e,
+    return ()
+
+meta def scratch_tac2 : tactic unit :=
+do
+    v <- mk_meta_var `(ℕ),
+    e <- mk_app ``eq [v, v],
+    set_goals [v],
+    return ()
+
 variables a b c : Prop
 example : a -> (a -> b) -> c -> b :=
 begin
-  intros,
-  deleteDangling,
+  intros h1 h2 h3,
+  scratch_tac,
   sorry
 end
