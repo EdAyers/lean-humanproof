@@ -7,10 +7,10 @@
 -- --Deletion
 -- deleteDone,                                        -- done by Lean.
 -- deleteDoneDisjunct,                                -- done by Lean.
--- deleteDangling,                                    -- need to detect this, then use `clear`.
--- deleteUnmatchable,                                 -- need to detect this, then use `clear`.
+-- deleteDangling,                                    -- done
+-- deleteUnmatchable,                                 -- need to detect this, then use `clear`. To detect, take each hyp and replace `var`s with metavars, then try to shallow-unify with the atom that is being tested. If it doesn't unify anywhere, then delete that atom.
 -- --Tidying
--- peelAndSplitUniversalConditionalTarget,            -- this would be `intros`, or do we need something more specialised? -- It's intros applied only when has form `∀(a:α), (∀(a:α), | (P->)) Q` and it does them all in one go.
+-- peelAndSplitUniversalConditionalTarget,            -- this would be `intros`, or do we need something more specialised? -- It's intros applied only when has form `∀(a:α), (∀(a:α), | (P->))* Q` and it does them all in one go.
 -- splitDisjunctiveHypothesis,                        -- this would be `cases`, but again that might be too general. -- Yep it's a specialisation of cases (E)
 -- splitConjunctiveTarget,                            -- there is a general purpose tactic called `split`. It might be to aggressive. See Remark (1) below. -- will need to read up on split (E)
 -- splitDisjunctiveTarget,                            -- in Lean you can't have two goals (=boxes) joined by `∨`. Need to thing about the tagging. -- We can do this by `try {refine (inj _), ...rest_of_tactic}` or similar.

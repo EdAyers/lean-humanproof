@@ -2,6 +2,7 @@
 -- deletion tactics for G&G prover
 
 import meta.expr
+import table
 open tactic expr
 
 universes u v w
@@ -13,25 +14,14 @@ def list.some {α : Type u} (p : α -> bool) : list α -> bool
 | [] := false
 | (h :: t) := p h || list.some t
 
-namespace exprset
-meta def exprset := rbmap expr unit expr.lt_prop
-meta def from_list (l : list expr) : exprset := rbmap.from_list $ list.map (λ x, ⟨x,unit.star⟩) l
-meta def to_list (d : exprset) : list expr := list.map prod.fst $ rbmap.to_list d
-meta def empty : exprset := mk_rbmap expr unit expr.lt_prop
-meta def union : exprset -> exprset -> exprset := rbmap.fold(λ x u a, rbmap.insert a x u)
-meta def contains : exprset -> expr -> bool := rbmap.contains
-end exprset
-
-open exprset
-
-meta def get_local_consts (e : expr) : exprset := from_list $ expr.list_local_const $ e
+meta def get_local_consts (e : expr) : table expr := from_list $ expr.list_local_const $ e
 
 meta structure formula :=
 (term : expr)
 (type : expr)
-(deps : exprset)
+(deps : table expr)
 
-meta def as_prop (h : expr) : tactic $ option formula :=
+meta def as_formula (h : expr) : tactic $ option formula :=
 do
     y <- infer_type h,
     p <- is_prop y,
@@ -40,13 +30,13 @@ do
 
 /--Get all of the context entries which are propositions along with their types.-/
 meta def local_hypotheses : tactic $ list formula :=
-local_context >>= list.mchoose as_prop
+local_context >>= list.mchoose as_formula
 
 /--Get the goals which are propositions along with their types -/
 meta def local_targets : tactic $ list formula :=
-get_goals >>= list.mchoose as_prop
+get_goals >>= list.mchoose as_formula
 
-meta def find_dangling : exprset -> list formula -> list formula -> list formula
+meta def find_dangling : table expr -> list formula -> list formula -> list formula
 | d acc [] := acc
 | d acc  (h :: hs) :=
     find_dangling (union d h.deps) (
@@ -54,17 +44,23 @@ meta def find_dangling : exprset -> list formula -> list formula -> list formula
         then h :: acc else acc
     ) (hs)
 
-meta def deleteDangling : tactic unit :=
+meta def delete_dangling : tactic unit :=
 do
     hyps <- local_hypotheses,
     targets <- local_targets,
     target_deps <- return $ list.foldl union empty $ list.map (λ t : formula, t.deps) targets,
     list.mmap' (λ (h : formula), clear h.term) $ find_dangling target_deps [] hyps
 
+meta def scratch_tac : tactic unit :=
+do v ← mk_meta_var `(ℕ),
+   e ← mk_app ``eq [v, v],
+   assert_core "h" e,
+   skip
+
 variables a b c : Prop
 example : a -> (a -> b) -> c -> b :=
 begin
-  intros,
-  deleteDangling,
+  intros h1 h2 h3,
+  scratch_tac,
   sorry
 end
