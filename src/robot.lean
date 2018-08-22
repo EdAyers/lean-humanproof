@@ -34,22 +34,8 @@ meta structure robot_state :=
     (hyps : hyps)
     (target : expr)
     (bullets : dict expr bullet)
-
--- Note that this is just `StateT robot_state tactic α` if we loved monad transformers.
--- The idea is that `robot` wraps `tactic` to ensure that the extra state remains up to date with the underlying goal structure.
-@[reducible] meta def robot (α : Type u) := robot_state → tactic (α × robot_state)
-
-meta instance : monad robot :=
-{ map := λ α β f x s, x s >>= (λ ⟨a,s⟩, pure ⟨f a, s⟩)
-, pure := λ α a s, pure ⟨a,s⟩
-, bind := λ α β x f s, x s >>= λ ⟨a,s⟩, f a s
-}
-
-meta instance : alternative robot :=
-{ failure := λ α (s : robot_state), failure 
-, orelse := λ α a b s, (a s : tactic _) <|> (b s)
-}
-
+    
+@[reducible] meta def robot := state_t robot_state tactic
 
 private meta def mk_hyp_telescope : expr → tactic hyp_telescope
 | (pi n bi a b) := do
@@ -87,18 +73,18 @@ private meta def mk_robot_state : tactic robot_state := do
     ⟨vs, hs⟩ ← mk_hp_vars_and_hyps [] empty ctx,
     return $ {vars := vs, hyps := hs, target := t, bullets := empty }
 
-meta def get_hyps : robot $ hyps := λ s, pure ⟨s.hyps, s⟩
-meta def set_hyps : hyps → robot unit := λ hs s, pure ⟨(), {hyps := hs, ..s}⟩
-meta def get_vars : robot $ list expr := λ s, pure ⟨s.vars, s⟩
-private meta def from_tactic {α : Type} : tactic α → robot α := λ t s, t >>= λ a, pure ⟨a,s⟩
-meta instance {α : Type} : has_coe (tactic α) (robot α) := ⟨from_tactic⟩ 
-meta def run {α : Type} (r : robot α) : tactic α := prod.fst <$> (mk_robot_state >>= r)
+meta def get_hyps : robot hyps := robot_state.hyps <$> get
+meta def set_hyps (hs:hyps) : robot unit := modify $ λ s, {hyps := hs, ..s}
+meta def get_vars : robot $ list expr := robot_state.vars <$> get
+private meta def of_tactic {α : Type} : tactic α → robot α := state_t.lift --[HACK] I get weird name clash errors if I call it `lift`.
+-- meta instance {α : Type} : has_coe (tactic α) (robot α) := ⟨lift⟩ 
+meta def run {α : Type} (r : robot α) : tactic α := prod.fst <$> (mk_robot_state >>= r.run)
 
 /--Remove a hypothesis. -/
 meta def clear_hyp (e : expr) : robot unit := do
     hs ← get_hyps,
     hs' ← pure $ dict.filter (λ _ (h: hyp), decidable.to_bool $ e ≠ h.body) $ hs,
-    clear e,
+    of_tactic $ clear e,
     set_hyps hs'
 
     
