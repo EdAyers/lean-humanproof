@@ -34,6 +34,7 @@ namespace dict
     meta instance : has_emptyc (dict k α) := ⟨empty⟩
     meta def insert : k → α → dict k α → dict k α := λ k a d, rb_map.insert d k a
     meta def get : k → dict k α → option α := λ k d, rb_map.find d k
+    meta def get_default (default : α)  (key : k) (d: dict k α) : α := option.get_or_else (get key d) default
     meta def erase : k → dict k α → dict k α := λ k d, rb_map.erase d k
     meta def merge (l r : dict k α) := rb_map.fold r l insert
     meta instance : has_append (dict k α) := ⟨merge⟩

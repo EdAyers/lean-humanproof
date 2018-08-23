@@ -1,120 +1,85 @@
-/- I'm going to define my own wrapper monad around `tactic`. 
-Maybe this is a bad idea. But it will give me practice with typeclasses in Lean so it won't be a waste of time -/
-
 import meta.expr
 import table
-open tactic expr dict table
-universe u
 
-namespace robot
+open expr table dict
 
+section
+    universes u v w
+    /--Monadic version of `choose` aka `filter_map`. -/
+    def list.choosem {m : Type u → Type v} [applicative m] {α : Type w} {β : Type u} (f : α → m (option β)) : list α → m (list β)
+    | []       := pure []
+    | (h :: t) := pure (λ (h : option β) (t : list β), option.rec_on h t (λ h, h :: t)) <*> f h <*> list.choosem t
+    section
+        variables {α: Type u} {β : Type v}
+        private def mapi_aux (f : ℕ → α → β) : ℕ → list α → list β
+        |n [] := []
+        |n (h :: t) := (f n h) :: (mapi_aux (nat.succ n) t)
+        def list.mapi (f : ℕ → α → β) := mapi_aux f 0
+    end
+    variables {m : Type → Type} [applicative m] {α : Type} -- [HACK] I got bored trying to get the universe poly to work.
+    def list.filterm (pred : α → m (bool)) : list α → m (list α)
+    |[] := pure []
+    |(h::t) := pure (λ (b:bool) t, if b then h::t else t) <*> pred h <*> list.filterm t
+    def list.anym (pred : α → m bool) : list α → m bool
+    |[] := pure ff
+    |(h::t) := pure bor <*> pred h <*> list.anym t
+    def list.allm (pred : α → m bool) : list α → m bool
+    |[] := pure tt
+    |(h::t) := pure band <*> pred h <*> list.allm t
+end 
+
+/--Run the given tactic, get the returned value. But don't keep the tactic's state. -/
+meta def tactic.hypothetically {α} (tb : tactic α) : tactic α :=
+    λ s, result.cases_on (tb s)
+        (λ a s, interaction_monad.result.success a s)
+        interaction_monad.result.exception
+
+/--This information is needed so frequently I'm bundling them into their own structure.-/
 meta structure statement :=
 (body : expr)
 (type : expr)
 (refs : table expr)
 
-meta inductive hyp_telescope
--- `prev` are values that have been substituted for the binder in the past.
-|Take  (type : expr) (prev : table expr) (rest : hyp_telescope)
-|Give  (type : expr) (rest : hyp_telescope)
-|Premiss (prop: expr) (rest : hyp_telescope) 
-|Conclusion (prop : expr)
+/--Robot needs some extra data on hypotheses to track when things can be deleted and so on.-/
+meta structure hyp_datum :=
+(vuln : bool) -- the hypothesis has been used previously and so is vulnerable for deletion.
+(cannot_substitute : dict nat (table expr)) -- The expressions that have previously been used on the nth argument.
 
-meta structure hyp extends statement :=
-    (telescope : hyp_telescope) -- the type has been 'preunwound' so that arguments can be tagged with data.
-    (vuln : bool) -- if it is vulnerable then it is fair game for delete_dangling and delete_unmatchable
+@[reducible] meta def hyp_data := dict expr hyp_datum
 
-meta inductive bullet_mode |Diamond |Circle
-
-meta structure bullet extends statement :=
-    (dependent : table expr) -- local-consts and metavariables that it is allowed to depend on. This is different to `refs` which tells you the references in the type signature.
-    (independent : table expr) -- local-consts and metavariables that it is not allowed to depend on
-    (mode : bullet_mode)
-
-@[inline] meta def target := statement
-@[inline] meta def targets := dict expr target
-meta def hyps := dict expr hyp
-meta def bullets := dict expr bullet
 meta structure robot_state :=
-    (vars : list expr)
-    (hyps : hyps)
-    (targets : targets)
-    (bullets : bullets)
-    
+(hyp_data : hyp_data)
+
 @[reducible] meta def robot := state_t robot_state tactic
-
-private meta def mk_hyp_telescope : expr → tactic hyp_telescope
-| (pi n bi a b) := do
-    -- [TODO] if `a` is a sigma or a product, convert to a Pi using Exists.elim
-    -- [TODO] consider using `init/meta/fun_info.lean` to do this.
-    p ← is_prop a,
-    rest ← mk_hyp_telescope b,
-    return $ if p then hyp_telescope.Take a table.empty rest
-             else hyp_telescope.Premiss a rest
-| (app (app `(Exists) a) p) := do
-    p ← whnf p,
-    match p with
-    |(pi n bi _ b) := do
-        rest ← mk_hyp_telescope b,
-        return $ hyp_telescope.Give a rest
-    |_ := none
-    end
-| x := return $ hyp_telescope.Conclusion x 
-
-meta def expr.is_mvar : expr → bool
-|(mvar _ _ _) := tt
-|_ := ff
-
-meta def get_refs (e : expr) : table expr :=
-expr.fold e table.empty (λ e' _ es, if expr.is_local_constant e' ∨ expr.is_mvar e' then table.insert e' es else es)
-
-
-private meta def mk_hp_vars_and_hyps : (list expr) → hyps → (list expr) → tactic ((list expr) × hyps)
-|(vs) (hs) ([]) := return ⟨vs, hs⟩
-|(vs) (hs) (v :: t) := do
-    -- TODO expand the definition of the type once?
-    type ← infer_type v,
-    isProp ← is_prop type,
-    if (isProp) then do
-        refs ← return $ get_refs type,
-        telescope ← mk_hyp_telescope type,
-        hyp ← return $ {hyp . body :=  v, type:=type, telescope := telescope, vuln:=false, refs := refs},
-        mk_hp_vars_and_hyps vs (dict.insert v hyp hs) t 
-    else mk_hp_vars_and_hyps (v :: vs) hs t
-
-private meta def mk_goals_and_bullets : list expr → tactic (targets × bullets)
-| [] := pure ⟨empty, empty⟩
-| (g :: gs) := do
-    type ← infer_type g,
-    refs ← get_refs type,
-    isProp ← is_prop type,
-    ⟨ts,bs⟩ ← mk_goals_and_bullets gs,
-    if isProp then 
-        let targ := {statement . body:=g, type:=type, refs:=refs} in
-        pure (⟨dict.insert targ ts, bs⟩ : targets × bullets)
-    else 
-        let b := {bullet . body:= g, type:=type, refs:=refs, depends}
-
-private meta def mk_robot_state : tactic robot_state := do
-    ctx ← local_context,
-    gs ← get_goals,
-    ⟨vs, hs⟩ ← mk_hp_vars_and_hyps [] empty ctx,
-    return $ {vars := vs, hyps := hs, target := t, bullets := empty }
-
-meta def get_hyps : robot hyps := robot_state.hyps <$> get
-meta def set_hyps (hs:hyps) : robot unit := modify $ λ s, {hyps := hs, ..s}
-meta def get_vars : robot $ list expr := robot_state.vars <$> get
-meta def get_targets : robot targets := robot_state.targets <$> get
-private meta def of_tactic {α : Type} : tactic α → robot α := state_t.lift --[HACK] I get weird name clash errors if I call it `lift`.
--- meta instance {α : Type} : has_coe (tactic α) (robot α) := ⟨lift⟩ 
-meta def run {α : Type} (r : robot α) : tactic α := prod.fst <$> (mk_robot_state >>= r.run)
-
-/--Remove a hypothesis from the tactic_state and robot_state. -/
-meta def clear_hyp (e : expr) : robot unit := do
-    hs ← get_hyps,
-    hs' ← pure $ dict.filter (λ _ (h: hyp), decidable.to_bool $ e ≠ h.body) $ hs,
-    of_tactic $ clear e,
-    set_hyps hs'
-
+namespace robot
+    meta def get_hyp_data : robot hyp_data := robot_state.hyp_data <$> get
+    meta def set_hyp_data (hs:hyp_data) : robot unit := modify $ λ s, {robot_state . hyp_data := hs, ..s}
+    meta def map_hyp_data (f : hyp_data → hyp_data) : robot unit := f <$> get_hyp_data >>= set_hyp_data
+    meta def of_tactic {α : Type} : tactic α → robot α := state_t.lift --[HACK] I get weird name clash errors if I call it `lift`.
+    meta instance {α : Type} : has_coe (tactic α) (robot α) := ⟨of_tactic⟩
+    meta def get_statement (e : expr) : robot $ option statement := do
+        type ← tactic.infer_type e,
+        is_prop ← tactic.is_prop type,
+        if not is_prop then pure none else do
+        refs ← pure $ table.from_list $ expr.list_local_const $ e,
+        pure $ some $ {body := e, type := type, refs := refs}
+    meta def get_hyps : robot (list statement) := -- [TODO] consider memoising this?
+        tactic.local_context >>= list.choosem get_statement
+    meta def get_vuln_hyps : robot (list statement) := do
+        hd ← get_hyp_data,
+        cs ← list.filter (λ x, show bool, from option.cases_on (get x hd) ff hyp_datum.vuln) <$> tactic.local_context,
+        list.choosem get_statement cs
+    meta def get_cannot_substitute (hyp:expr) : robot (dict nat (table expr)) := do
+        hd ←  dict.get hyp <$> get_hyp_data,
+        pure $ option.get_or_else (hyp_datum.cannot_substitute <$> hd) empty
+    meta def get_targets : robot $ list $ statement :=
+        tactic.get_goals >>= list.choosem get_statement
+    /--Clear the hyp but also update the hyp_data entry.-/
+    meta def clear_hyp (h : expr) : robot unit := do
+        tactic.clear h,
+        map_hyp_data (dict.erase h)
+    /--Run given tactic. But throw away the state made by the tactic.-/
+    meta def hypothetically {α} (t : robot α) : robot α :=
+        ⟨λ rs, tactic.hypothetically (t.run rs)⟩
 
 end robot
