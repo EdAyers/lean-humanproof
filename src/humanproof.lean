@@ -5,10 +5,10 @@
 -- The *moves* as explained in the G&G paper.
 --
 -- --Deletion
--- deleteDone,                                        -- done by Lean.
--- deleteDoneDisjunct,                                -- done by Lean.
--- deleteDangling,                                    -- done
--- deleteUnmatchable,                                 -- need to detect this, then use `clear`. To detect, take each hyp and replace `var`s with metavars, then try to shallow-unify with the atom that is being tested. If it doesn't unify anywhere, then delete that atom.
+-- deleteDone,             ✅                           -- done by Lean.
+-- deleteDoneDisjunct,      ✅                          -- done by Lean.
+-- deleteDangling,           ✅                         -- done
+-- deleteUnmatchable,         ✅                      -- need to detect this, then use `clear`. To detect, take each hyp and replace `var`s with metavars, then try to shallow-unify with the atom that is being tested. If it doesn't unify anywhere, then delete that atom.
 -- --Tidying
 -- peelAndSplitUniversalConditionalTarget,            -- this would be `intros`, or do we need something more specialised? -- It's intros applied only when has form `∀(a:α), (∀(a:α), | (P->))* Q` and it does them all in one go.
 -- splitDisjunctiveHypothesis,                        -- this would be `cases`, but again that might be too general. -- Yep it's a specialisation of cases (E)

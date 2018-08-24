@@ -43,7 +43,7 @@ meta def tactic.hypothetically {α} (tb : tactic α) : tactic α :=
 meta structure statement :=
 (body : expr)
 (type : expr)
-(refs : table expr)
+(refs : table expr) --[TODO] make this a thunk?
 
 meta instance : has_to_tactic_format statement := ⟨λ a, do bpp ← tactic.pp a.body, tpp ← tactic.pp a.type, pure $ bpp ++ " : " ++ tpp⟩
 
