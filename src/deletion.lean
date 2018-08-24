@@ -31,17 +31,6 @@ meta def delete_dangling : robot unit := do
     target_deps ← return $ list.foldl union empty $ list.map (statement.refs) targets,
     list.mmap' (λ h : statement, clear_hyp h.body) $ find_dangling target_deps [] hyps
 
-
-/- How to implement 'delete unmatchable'?
-
-    We first need to write a `match` routine.
-    This takes a pi-type hypothesis and attempts to find an argument within 
-
-   Take a hyp H, get its type. We are interested if it is an atomic formula.
-   Now we look at all of the other hypotheses and targets
-   if H can't be applied to any of these then we discard it.
--/
-
 meta def try_on_all_goals_aux (check : robot unit) : ℕ → robot unit
 |0 := fail "it didn't work on any of the goals"
 |(nat.succ n) := hypothetically check <|> (rotate 1 *> try_on_all_goals_aux n)
@@ -78,8 +67,8 @@ meta def is_result (h : statement) : robot bool := expr.is_pi <$>  whnf (h.type)
 meta def is_atom (h : statement) : robot bool := (bnot ∘ expr.is_pi) <$> whnf (h.type)
 
 meta def delete_unmatchable : robot unit := do
-    lc ← get_hyps, -- [NOTE] needlessly recalculating `refs`. [TODO] should only select vulnerable ones.
-    atoms ← list.filterm is_atom lc, -- [NOTE] perhaps write `list.partitionm`.
+    lc ← get_hyps, -- [NOTE] needlessly recalculating `refs`.
+    atoms ← list.filterm (λ a, pure band <*> (is_atom a) <*> (is_vuln a.body)) lc, -- [NOTE] perhaps write `list.partitionm`.
     --tactic.trace atoms,
     results ← list.filterm is_result lc,
     --tactic.trace results,
@@ -98,7 +87,7 @@ variables (α : Type) (A B C : set α) (x : α)
 example : (x ∈ A) → (x ∈ B) → ((x ∈ B) → (x ∈ C)) → (x ∈ C) := begin
   intros,
   robot.run (do
-    tactic.get_local `a >>= robot.set_vuln,
+   tactic.get_local `a >>= robot.set_vuln,
     robot.delete_unmatchable
   ),
   -- [TODO] write a check here that makes sure that `x ∈ A` got deleted.
@@ -106,7 +95,3 @@ example : (x ∈ A) → (x ∈ B) → ((x ∈ B) → (x ∈ C)) → (x ∈ C) :=
 end
 
 end TEST
-
-section SCRATCH
-
-end SCRATCH

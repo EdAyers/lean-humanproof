@@ -77,6 +77,9 @@ namespace robot
         hd ← get_hyp_data,
         cs ← list.filter (λ x, show bool, from option.cases_on (get x hd) ff hyp_datum.vuln) <$> tactic.local_context,
         list.choosem get_statement cs
+    meta def is_vuln (h : expr) : robot bool := do
+        hd ← get_hyp_data,
+        pure $  option.cases_on (get h hd) ff hyp_datum.vuln
     meta def set_vuln (h : expr) : robot unit :=
         -- [TODO] make sure it really is a hypothesis and not just some random expression.
         map_hyp_data (dict.modify_default hyp_datum.init (λ hd, {vuln := tt, ..hd}) h)
