@@ -24,6 +24,7 @@ namespace table
     /--Return `tt` if at least one of the elements satisfies the predicate-/
     meta def any (p : α → bool) : table α → bool := option.is_none ∘ mfold (λ a (x : unit), if p a then none else some ()) ()
     meta def filter (p : α → bool) : table α → table α := fold (λ k t, if p k then insert k t else t) empty
+    meta instance [has_to_tactic_format α] : has_to_tactic_format (table α) := ⟨λ t, mfold (λ a f, do ap ← tactic.pp a, pure $ f ++ ap ++ ", ") ("") t >>= (λ f, pure $ "{|" ++ f ++ "|}" ) ⟩
 end table
 
 meta def dict (k : Type) (α : Type) : Type := rb_map k α
@@ -34,6 +35,8 @@ namespace dict
     meta instance : has_emptyc (dict k α) := ⟨empty⟩
     meta def insert : k → α → dict k α → dict k α := λ k a d, rb_map.insert d k a
     meta def get : k → dict k α → option α := λ k d, rb_map.find d k
+    meta def modify (f : option α → α) (key : k) (d : dict k α) : dict k α := insert key (f $ get key d) d
+    meta def modify_default (default : α) (f : α → α) : k → dict k α → dict k α := modify (λ o, f $ option.get_or_else o default)
     meta def get_default (default : α)  (key : k) (d: dict k α) : α := option.get_or_else (get key d) default
     meta def erase : k → dict k α → dict k α := λ k d, rb_map.erase d k
     meta def merge (l r : dict k α) := rb_map.fold r l insert
@@ -45,3 +48,16 @@ namespace dict
     meta def collect {β} (f : k → α → dict k β) := fold (λ k a d, d ++ f k a) empty
     meta def choose {β} (f : k → α → option β) := fold (λ k a d, match f k a with (some b) := insert k b d | none := d end) empty
 end dict
+
+/--dictionary with a default if it doesn't exist. You define the default when you make the dictionary. -/
+meta structure dictd (k : Type) (α : Type) : Type :=
+(dict : dict k α)
+(default : k → α)
+namespace dictd
+  variables {k : Type} [has_lt k] [decidable_rel ((<) : k → k → Prop)] {α : Type}
+  private meta def empty (default : k → α) : dictd k α := ⟨dict.empty, default⟩
+  meta def get (key : k) (dd : dictd k α) : α := dict.get_default (dd.2 key) key dd.1
+  meta def insert (key : k) (a : α) (dd : dictd k α) : dictd k α := ⟨dict.insert key a dd.1, dd.2⟩
+  meta def modify (f : α → α) (key : k) (dd : dictd k α) : dictd k α := ⟨dict.modify (λ o, f $ option.get_or_else o (dd.2 key)) key dd.1, dd.2⟩
+
+end dictd

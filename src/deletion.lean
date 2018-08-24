@@ -43,68 +43,70 @@ meta def delete_dangling : robot unit := do
 -/
 
 meta def try_on_all_goals_aux (check : robot unit) : ℕ → robot unit
-|0 := pure ()
+|0 := fail "it didn't work on any of the goals"
 |(nat.succ n) := hypothetically check <|> (rotate 1 *> try_on_all_goals_aux n)
 meta def try_on_all_goals (check : robot unit) : robot unit := num_goals >>= try_on_all_goals_aux check
 
-/--Returns tt if A can be applied as one of the arguments to `H`-/
+/--Returns tt if `A` can be applied as one of the arguments to `H`-/
 meta def is_matchable (A : expr) (H : expr) : robot bool := hypothetically $ 
     (do
+        --trace "____",
         m ← mk_mvar,
         set_goals [m],
+        --robot.of_tactic (tactic.infer_type H >>= tactic.trace),
         ms ← apply H {unify := tt, new_goals := new_goals.non_dep_only},
+        --robot.of_tactic (tactic.target >>= tactic.trace),
         cannot_substitute ← get_cannot_substitute H,
         ms' ← pure $ @list.mapi (name × expr) (expr × table expr) (λ n ⟨l,e⟩, ⟨e, dict.get_default empty n cannot_substitute⟩) ms,
+        --trace ms',
         -- rotate through all of the goals, seeing if H can be applied.
         try_on_all_goals (do
             apply A,
+            --trace A,
             @list.mmap' _ _ (expr × table expr) unit (λ ⟨e, x⟩, do 
                 e' ← instantiate_mvars e,
                 assert $ not $ contains e' x,
                 return ()
             ) ms',
+            --trace A,
             return ()
         ),
         pure tt)
     <|> pure ff
     
-meta def is_atom (h : statement) : robot bool := expr.is_pi <$>  whnf (h.type)
-meta def is_result (h : statement) : robot bool := (bnot ∘ expr.is_pi) <$> whnf (h.type)
+meta def is_result (h : statement) : robot bool := expr.is_pi <$>  whnf (h.type)
+meta def is_atom (h : statement) : robot bool := (bnot ∘ expr.is_pi) <$> whnf (h.type)
 
 meta def delete_unmatchable : robot unit := do
-    lc ← get_hyps, -- [NOTE] needlessly recalculating `refs`
-    atoms ← list.filterm is_atom lc,
+    lc ← get_hyps, -- [NOTE] needlessly recalculating `refs`. [TODO] should only select vulnerable ones.
+    atoms ← list.filterm is_atom lc, -- [NOTE] perhaps write `list.partitionm`.
+    --tactic.trace atoms,
     results ← list.filterm is_result lc,
-    clear_these ← list.filterm (λ a, list.allm (λ r, bnot <$> is_matchable (statement.body a) (statement.body r)) results) atoms,
+    --tactic.trace results,
+    clear_these ← list.filterm (λ a,
+      list.allm (λ r,
+        
+        bnot <$> is_matchable (statement.body a) (statement.body r)
+      ) results
+    ) atoms,
     list.mmap' (λ c, clear_hyp (statement.body c)) clear_these
     
-
-
-
-
-
-
-
-
 end robot
 
+section TEST
+variables (α : Type) (A B C : set α) (x : α)
+example : (x ∈ A) → (x ∈ B) → ((x ∈ B) → (x ∈ C)) → (x ∈ C) := begin
+  intros,
+  robot.run (do
+    tactic.get_local `a >>= robot.set_vuln,
+    robot.delete_unmatchable
+  ),
+  -- [TODO] write a check here that makes sure that `x ∈ A` got deleted.
+  apply a_2 a_1,
+end
+
+end TEST
+
 section SCRATCH
-    universe u
-    meta def myfun {α : Type} : α → α → α := λ x _,x 
-    set_option trace.app_builder true
-    meta def mytac : tactic unit := do
-        e ← to_expr $ ```(myfun),
-        fi ← get_fun_info e,
-        trace fi,
-        ssi ← get_subsingleton_info e,
-        trace ssi,
 
-        e2 ← mk_app `myfun [ `(unit.star), `(unit.star)],
-        trace e2
-
-    lemma scratch : true := begin
-        mytac,
-        trivial,
-        sorry,
-    end
 end SCRATCH
